@@ -79,7 +79,7 @@ class MainActivity : AppCompatActivity() {
             settings.displayZoomControls = false
             settings.loadWithOverviewMode = true
             settings.useWideViewPort = true
-            settings.setSupportMultipleWindows = false
+            settings.supportMultipleWindows = false
             settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
 
             webViewClient = object : WebViewClient() {
