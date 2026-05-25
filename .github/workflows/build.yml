@@ -1,0 +1,53 @@
+name: Build OC Muhammad WebView
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.0
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -1 | sed 's/.*versionName = "\(.*\)"/\1/')
+          echo "name=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3.13.0
+        with:
+          distribution: 'adopt'
+          java-version: '17'
+
+      - name: Grant execute permissions for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Rename APK
+        run: |
+          VERSION="${{ steps.version.outputs.name }}"
+          mkdir -p release-apks
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          if [ -n "$APK" ]; then
+            cp "$APK" release-apks/oc-muhammad-webview-${VERSION}.apk
+          else
+            echo "::error::No APK found"
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: oc-muhammad-webview-apk
+          path: release-apks/*.apk
+          retention-days: 90
