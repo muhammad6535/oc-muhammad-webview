@@ -2,13 +2,17 @@
 <resources>
     <string name="app_name">OC Muhammad</string>
     <string name="error_title">Cannot Connect</string>
-    <string name="error_connection">Could not reach opencode server at:\n%1$s\n\n%2$s\n\nMake sure opencode is running on your phone (run: opencode web --hostname 127.0.0.1 --port 4096)</string>
+    <string name="error_connection">Could not reach server at:\n%1$s\n\n%2$s\n\nMake sure the server is running and credentials are correct.</string>
     <string name="unknown_error">Unknown error</string>
     <string name="settings_title">Settings</string>
     <string name="settings_change_url">Change Server URL</string>
+    <string name="settings_credentials">Username / Password</string>
     <string name="settings_toggle_theme">Toggle Dark/Light Theme</string>
     <string name="settings_reload">Reload</string>
     <string name="url_dialog_title">Enter Server URL</string>
+    <string name="credentials_dialog_title">Server Login</string>
+    <string name="credential_username_hint">Username</string>
+    <string name="credential_password_hint">Password</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="dark_mode_on">Dark mode enabled</string>

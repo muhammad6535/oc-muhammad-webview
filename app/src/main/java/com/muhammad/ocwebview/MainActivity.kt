@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.util.Base64
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -12,7 +13,6 @@ import android.webkit.WebViewClient
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.isVisible
@@ -31,11 +31,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
 
     private var serverUrl: String = DEFAULT_URL
+    private var serverUsername: String = DEFAULT_USERNAME
+    private var serverPassword: String = ""
 
     companion object {
-        private const val DEFAULT_URL = "http://127.0.0.1:4096"
+        private const val DEFAULT_URL = "https://oc-muhammad-server-production.up.railway.app"
+        private const val DEFAULT_USERNAME = "opencode"
         private const val PREFS_NAME = "oc_webview_prefs"
         private const val KEY_SERVER_URL = "server_url"
+        private const val KEY_USERNAME = "server_username"
+        private const val KEY_PASSWORD = "server_password"
         private const val KEY_DARK_MODE = "dark_mode"
     }
 
@@ -46,6 +51,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         serverUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_URL) ?: DEFAULT_URL
+        serverUsername = prefs.getString(KEY_USERNAME, DEFAULT_USERNAME) ?: DEFAULT_USERNAME
+        serverPassword = prefs.getString(KEY_PASSWORD, "") ?: ""
 
         webView = findViewById(R.id.webview)
         swipeRefresh = findViewById(R.id.swipe_refresh)
@@ -66,6 +73,30 @@ class MainActivity : AppCompatActivity() {
             if (darkMode) AppCompatDelegate.MODE_NIGHT_YES
             else AppCompatDelegate.MODE_NIGHT_NO
         )
+    }
+
+    private fun basicAuthHeader(): String? {
+        val u = serverUsername.takeIf { it.isNotBlank() } ?: return null
+        val p = serverPassword.takeIf { it.isNotBlank() } ?: return null
+        val credentials = "$u:$p"
+        return "Basic " + Base64.encodeToString(credentials.toByteArray(), Base64.NO_WRAP)
+    }
+
+    private fun authHeaders(): Map<String, String> {
+        val header = basicAuthHeader() ?: return emptyMap()
+        return mapOf("Authorization" to header)
+    }
+
+    private fun loadUrlWithAuth(url: String? = null) {
+        val target = url ?: serverUrl
+        errorView.isVisible = false
+        webView.isVisible = true
+        val headers = authHeaders()
+        if (headers.isNotEmpty()) {
+            webView.loadUrl(target, headers)
+        } else {
+            webView.loadUrl(target)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -96,19 +127,34 @@ class MainActivity : AppCompatActivity() {
                     swipeRefresh.isRefreshing = false
                 }
 
+                override fun onReceivedHttpAuthRequest(
+                    view: WebView?,
+                    handler: android.webkit.HttpAuthHandler?,
+                    host: String?,
+                    realm: String?
+                ) {
+                    if (serverUsername.isNotBlank() && serverPassword.isNotBlank()) {
+                        handler?.proceed(serverUsername, serverPassword)
+                    } else {
+                        handler?.cancel()
+                    }
+                }
+
                 override fun onReceivedError(
                     view: WebView?, errorCode: Int,
                     description: String?, failingUrl: String?
                 ) {
                     progressBar.isVisible = false
                     swipeRefresh.isRefreshing = false
-                    webView.isVisible = false
-                    errorView.isVisible = true
-                    errorText.text = getString(
-                        R.string.error_connection,
-                        serverUrl,
-                        description ?: getString(R.string.unknown_error)
-                    )
+                    if (failingUrl == serverUrl || failingUrl == serverUrl.trimEnd('/') + "/") {
+                        webView.isVisible = false
+                        errorView.isVisible = true
+                        errorText.text = getString(
+                            R.string.error_connection,
+                            serverUrl,
+                            description ?: getString(R.string.unknown_error)
+                        )
+                    }
                 }
             }
 
@@ -121,39 +167,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSwipeRefresh() {
-        swipeRefresh.setOnRefreshListener { webView.reload() }
+        swipeRefresh.setOnRefreshListener { loadUrlWithAuth() }
         swipeRefresh.setColorSchemeResources(
             com.google.android.material.R.color.material_dynamic_primary50
         )
     }
 
     private fun setupFab() {
-        fabSettings.setOnClickListener {
-            showSettingsDialog()
-        }
+        fabSettings.setOnClickListener { showSettingsDialog() }
     }
 
     private fun loadUrl() {
-        errorView.isVisible = false
-        webView.isVisible = true
-        webView.loadUrl(serverUrl)
+        loadUrlWithAuth()
     }
 
     private fun showSettingsDialog() {
         val items = arrayOf(
             getString(R.string.settings_change_url),
+            getString(R.string.settings_credentials),
             getString(R.string.settings_toggle_theme),
             getString(R.string.settings_reload)
         )
 
         MaterialAlertDialogBuilder(this)
-            .setTitle(getString(R.string.settings_title))
-            .setIcon(R.drawable.ic_settings)
+            .setTitle(getString(R.string.settings_title) + " — OC Muhammad")
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> showUrlInputDialog()
-                    1 -> toggleTheme()
-                    2 -> webView.reload()
+                    1 -> showCredentialsDialog()
+                    2 -> toggleTheme()
+                    3 -> loadUrlWithAuth()
                 }
             }
             .show()
@@ -171,11 +214,34 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(getString(R.string.save)) { _, _ ->
                 val newUrl = input.text.toString().trim()
                 if (newUrl.isNotBlank()) {
-                    val url = if (newUrl.startsWith("http")) newUrl else "http://$newUrl"
+                    val url = if (newUrl.startsWith("http")) newUrl else "https://$newUrl"
                     serverUrl = url
                     prefs.edit().putString(KEY_SERVER_URL, url).apply()
-                    loadUrl()
+                    loadUrlWithAuth()
                 }
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
+    private fun showCredentialsDialog() {
+        val views = layoutInflater.inflate(R.layout.dialog_credentials, null)
+        val usernameInput = views.findViewById<android.widget.EditText>(R.id.credential_username)
+        val passwordInput = views.findViewById<android.widget.EditText>(R.id.credential_password)
+        usernameInput.setText(serverUsername)
+        passwordInput.setText(serverPassword)
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.credentials_dialog_title))
+            .setView(views)
+            .setPositiveButton(getString(R.string.save)) { _, _ ->
+                serverUsername = usernameInput.text.toString().trim().ifBlank { DEFAULT_USERNAME }
+                serverPassword = passwordInput.text.toString()
+                prefs.edit()
+                    .putString(KEY_USERNAME, serverUsername)
+                    .putString(KEY_PASSWORD, serverPassword)
+                    .apply()
+                loadUrlWithAuth()
             }
             .setNegativeButton(getString(R.string.cancel), null)
             .show()
